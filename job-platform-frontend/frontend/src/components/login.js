@@ -1,32 +1,12 @@
-import { useState, useContext } from "react";
-import API from "../services/api";
-import { AuthContext } from "../context/AuthContext";
+export default function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-const Login = () => {
-  const { login } = useContext(AuthContext);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const res = await API.post("/auth/login", { email, password });
-      login(res.data); // save user + token
-      alert("Login successful!");
-    } catch (err) {
-      alert("Login failed!");
-      console.error(err);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit}>
-      <h3>Login</h3>
-      <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
-      <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />
-      <button type="submit">Login</button>
-    </form>
-  );
-};
-
-export default Login;
+  if (req.method === "POST") {
+    const { username} = req.body;
+    res.status(200).json({ message: `User ${username} logged in successfully!` });
+  } else {
+    res.status(405).json({ message: "Method not allowed" });
+  }
+}

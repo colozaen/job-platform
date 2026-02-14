@@ -1,38 +1,29 @@
 import { useEffect, useState } from "react";
-import API from "./services/api";
 
 function App() {
-  const [message, setMessage] = useState("Loading...");
+  const [jobs, setJobs] = useState([]);
 
   useEffect(() => {
-    API.get("/")
-      .then((response) => {
-        console.log("Backend response:", response.data);
-        setMessage(response.data.message);
-      })
-      .catch((error) => {
-        console.error("Backend not connected:", error);
-        setMessage("Error connecting to backend");
-      });
+    fetch(`${process.env.REACT_APP_API_URL}/jobs`)
+      .then(res => res.json())
+      .then(data => setJobs(data))
+      .catch(err => console.log("Failed to fetch", err));
   }, []);
 
   return (
-    <div
-      style={{
-        height: "100vh",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        background: "#dbeafe",
-        textAlign: "center"
-      }}
-    >
-      <div>
-        <h1>Welcome to My Job Platform</h1>
-        <h1 style={{ fontWeight: "bold", fontSize: "30px", color: "#1e3a8a" }}>
-          {message}
-        </h1>
-      </div>
+    <div style={{ padding: "40px", fontFamily: "Arial" }}>
+      <h1>JOB PLATFORM</h1>
+      <h2>Available Jobs</h2>
+
+      {jobs.length === 0 ? (
+        <p>Loading jobs...</p>
+      ) : (
+        <ul>
+          {jobs.map(job => (
+            <li key={job.id}>{job.title}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
