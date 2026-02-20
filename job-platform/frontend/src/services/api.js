@@ -1,5 +1,5 @@
 import axios from "axios";
 const API = axios.create({
-    baseURL: "http://localhost:50000"
+    baseURL: "https://job-platform-server.onrender.com/api",
 });
 export default API;
