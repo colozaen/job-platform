@@ -11,57 +11,37 @@ const qrcode = require("qrcode");
 dotenv.config();
 const app = express();
 
-// required middleware
 app.use(express.json());
 app.use(cors());
 
-// single, consistent Mongo URI
-const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017/job-platform";
+// Route imports
+const jobRoutes = require("./routes/jobRoutes");
+const profileRoutes = require("./routes/profileRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
-mongoose.connect(MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-  .then(() => console.log("MongoDB connected successfully"))
-  .catch(err => console.error("MongoDB connection error:", err && err.message ? err.message : err));
+app.use("/api/jobs", jobRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/admin", adminRoutes);
 
-// Cloudinary Config
-cloudinary.config({
-  cloud_name: process.env.CLOUD_NAME,
-  api_key: process.env.CLOUD_API_KEY,
-  api_secret: process.env.CLOUD_API_SECRET
-});
-
-// MODELS
+// Models
 const User = require("./models/User");
 const Job = require("./models/Job");
 const Comment = require("./models/Comment");
 
-// AUTH MIDDLEWARE
-const authMiddleware = async (req, res, next) => {
-  const authHeader = req.headers.authorization || req.headers.Authorization;
-  const token = authHeader && authHeader.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Access denied" });
-  try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = verified;
-    next();
-  } catch (err) {
-    return res.status(401).json({ error: "Invalid token" });
-  }
-};
+// DB connection
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log("MongoDB connected successfully"))
+.catch(err => console.error("MongoDB connection error:", err.message));
 
-// ADMIN MIDDLEWARE
-const adminMiddleware = async (req, res, next) => {
-  if (!req.user?.id) return res.status(401).json({ error: "Unauthorized" });
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user?.isAdmin) return res.status(403).json({ error: "Admin only" });
-    next();
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-};
+// Cloudinary config
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUD_API_KEY,
+  api_secret: process.env.CLOUD_API_SECRET,
+});
 
 // ---------------- AUTH ROUTES ----------------
 app.post("/auth/register", async (req, res) => {
@@ -83,10 +63,8 @@ app.post("/auth/login", async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: "Email and password required" });
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ error: "User not found" });
-
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: "Invalid password" });
-
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
     res.json({ token, user: { name: user.name, email: user.email, id: user._id } });
   } catch (err) {
@@ -94,74 +72,8 @@ app.post("/auth/login", async (req, res) => {
   }
 });
 
-// ---------------- JOB ROUTES ----------------
-app.get("/jobs", async (req, res) => {
-  try {
-    const jobs = await Job.find().sort({ createdAt: -1 });
-    res.json(jobs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/jobs", authMiddleware, async (req, res) => {
-  try {
-    const job = new Job({ ...req.body, postedBy: req.user.id });
-    await job.save();
-    res.json(job);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// ---------------- COMMENT ROUTES ----------------
-app.post("/jobs/:id/comments", authMiddleware, async (req, res) => {
-  try {
-    const comment = new Comment({
-      job: req.params.id,
-      user: req.user.id,
-      text: req.body.text
-    });
-    await comment.save();
-    res.json(comment);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.get("/jobs/:id/comments", async (req, res) => {
-  try {
-    const comments = await Comment.find({ job: req.params.id }).populate("user", "name profilePicture");
-    res.json(comments);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ---------------- PROFILE ROUTES ----------------
-app.put("/profile", authMiddleware, async (req, res) => {
-  try {
-    const { name, bio } = req.body;
-    const user = await User.findByIdAndUpdate(req.user.id, { name, bio }, { new: true });
-    res.json(user);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.post("/profile/picture", authMiddleware, async (req, res) => {
-  try {
-    if (!req.body?.image) return res.status(400).json({ error: "Image data required" });
-    const result = await cloudinary.uploader.upload(req.body.image, { folder: "profiles" });
-    const user = await User.findByIdAndUpdate(req.user.id, { profilePicture: result.secure_url }, { new: true });
-    res.json(user);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// ---------------- 2FA SETUP ----------------
-app.post("/auth/2fa/setup", authMiddleware, async (req, res) => {
+// 2FA setup route (optional)
+app.post("/auth/2fa/setup", require("./middleware/authMiddleware"), async (req, res) => {
   try {
     const secret = speakeasy.generateSecret({ length: 20 });
     const url = speakeasy.otpauthURL({ secret: secret.base32, label: req.user.id, issuer: "JobPlatform" });
@@ -173,24 +85,8 @@ app.post("/auth/2fa/setup", authMiddleware, async (req, res) => {
   }
 });
 
-// ---------------- ADMIN ROUTES ----------------
-app.get("/admin/users", authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const users = await User.find();
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ---------------- SERVER ----------------
-app.get("/", (req, res) => {
-  res.send("Job Platform API is running 🚀");
-});
+// Server test
+app.get("/", (req, res) => res.send("Job Platform API is running 🚀"));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
-module.exports = app;
+app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
